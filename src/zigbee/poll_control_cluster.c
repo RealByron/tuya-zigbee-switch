@@ -31,6 +31,9 @@ static const uint16_t poll_ctrl_cluster_revision = 0x01;
 // Single instance pointer for trampoline
 static zigbee_poll_control_cluster *poll_ctrl_instance = NULL;
 
+// OTA mode: when active, poll control defers to OTA-required fast poll rate
+static bool ota_active = false;
+
 // NVM persistence
 typedef struct {
     uint32_t check_in_interval;
@@ -330,6 +333,10 @@ void poll_control_cluster_update(void) {
     if (poll_ctrl_instance == NULL)
         return;
 
+    // During OTA download, don't enforce poll rate — OTA controls it
+    if (ota_active)
+        return;
+
     zigbee_poll_control_cluster *cluster = poll_ctrl_instance;
     if (cluster->in_fast_poll &&
         (int32_t)(hal_millis() - cluster->fast_poll_end_ms) >= 0) {
@@ -344,6 +351,21 @@ void poll_control_cluster_update(void) {
                               : QS_TO_MS(cluster->long_poll_interval);
     if (hal_zigbee_get_poll_rate_ms() != expected_poll_rate_ms) {
         hal_zigbee_set_poll_rate_ms(expected_poll_rate_ms);
+    }
+}
+
+void poll_control_cluster_set_ota_active(bool active) {
+    ota_active = active;
+
+    if (poll_ctrl_instance == NULL)
+        return;
+
+    if (active) {
+        hal_zigbee_set_poll_rate_ms(
+            QS_TO_MS(poll_ctrl_instance->short_poll_interval));
+    } else {
+        // Restore normal poll rate based on current fast poll state
+        exit_fast_poll(poll_ctrl_instance);
     }
 }
 

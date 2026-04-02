@@ -10,6 +10,10 @@
 #include "telink_zigbee_hal.h"
 #include "version_cfg.h"
 
+#ifdef END_DEVICE
+#include "zigbee/poll_control_cluster.h"
+#endif
+
 // Forward declarations
 
 void ota_process_msg_callback(u8 evt, u8 status);
@@ -36,7 +40,16 @@ void hal_ota_cluster_setup(hal_zigbee_cluster *cluster) {
 }
 
 void ota_process_msg_callback(u8 evt, u8 status) {
-    if (evt == OTA_EVT_COMPLETE) {
+    if (evt == OTA_EVT_START) {
+#ifdef END_DEVICE
+        if (status == ZCL_STA_SUCCESS) {
+            poll_control_cluster_set_ota_active(true);
+        }
+#endif
+    } else if (evt == OTA_EVT_COMPLETE) {
+#ifdef END_DEVICE
+        poll_control_cluster_set_ota_active(false);
+#endif
         if (status == ZCL_STA_SUCCESS) {
             ota_mcuReboot();
         } else {

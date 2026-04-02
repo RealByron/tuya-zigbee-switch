@@ -34,6 +34,7 @@ void poll_control_cluster_add_to_endpoint(zigbee_poll_control_cluster *cluster,
                                           bool is_battery_device);
 void poll_control_cluster_update(void);
 void poll_control_cluster_callback_attr_write(uint16_t attribute_id);
+void poll_control_cluster_set_ota_active(bool active);
 
 #endif // END_DEVICE
 #endif // _POLL_CONTROL_CLUSTER_H_
