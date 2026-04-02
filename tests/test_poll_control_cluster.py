@@ -297,20 +297,39 @@ def test_nvm_persistence(cleanup_nvm):
     proc2.stop()
 
 
-def test_zcl_activity_triggers_fast_poll(bat_device: Device):
-    """Any ZCL command triggers fast poll mode via activity callback.
+def test_zcl_activity_triggers_fast_poll_before_settle(bat_device: Device):
+    """ZCL activity triggers fast poll only before settle completes.
 
-    Since every zcl_cmd triggers the activity callback before dispatching,
-    we verify this by sending a relay command after the fast poll timeout expires,
-    then confirming the poll rate returns to fast-poll cadence.
+    Before settle (first fast poll timeout), on_zcl_activity enters fast poll.
+    After settle, ZCL activity no longer triggers fast poll to avoid
+    cascading wake-ups on battery devices.
     """
-    # Wait for initial fast poll to expire
+    # Device starts in fast poll (settle not complete yet).
+    # Wait for it to expire → settle_completed = true.
     bat_device.step_time(BATTERY_FAST_POLL_TIMEOUT * QS_TO_MS + 1)
     assert_poll_rate(bat_device, BATTERY_LONG_POLL_INTERVAL)
 
-    # Send a relay command - this triggers zcl_activity which re-enters fast poll
+    # After settle: ZCL activity must NOT re-enter fast poll
     from zcl_consts import ZCL_CLUSTER_ON_OFF, ZCL_CMD_ONOFF_ON
 
     bat_device.call_zigbee_cmd(2, ZCL_CLUSTER_ON_OFF, ZCL_CMD_ONOFF_ON)
 
+    assert_poll_rate(bat_device, BATTERY_LONG_POLL_INTERVAL)
+
+
+def test_zcl_activity_does_not_extend_fast_poll(bat_device: Device):
+    """ZCL activity while already in fast poll does NOT reset the timeout timer."""
+    from zcl_consts import ZCL_CLUSTER_ON_OFF, ZCL_CMD_ONOFF_ON
+
     assert_poll_rate(bat_device, BATTERY_SHORT_POLL_INTERVAL)
+
+    # Step to just before the timeout
+    bat_device.step_time(BATTERY_FAST_POLL_TIMEOUT * QS_TO_MS - 100)
+    assert_poll_rate(bat_device, BATTERY_SHORT_POLL_INTERVAL)
+
+    # Trigger ZCL activity while still in fast poll — must NOT reset the timer
+    bat_device.call_zigbee_cmd(2, ZCL_CLUSTER_ON_OFF, ZCL_CMD_ONOFF_ON)
+
+    # 100ms + 1ms later the original timeout expires → must be in long poll
+    bat_device.step_time(101)
+    assert_poll_rate(bat_device, BATTERY_LONG_POLL_INTERVAL)

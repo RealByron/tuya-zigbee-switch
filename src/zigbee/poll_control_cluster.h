@@ -19,6 +19,7 @@ typedef struct {
     // Runtime state
     uint8_t              endpoint;
     bool                 in_fast_poll;
+    bool                 settle_completed;
     uint32_t             fast_poll_end_ms;
 
     // Tasks

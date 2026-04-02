@@ -94,6 +94,12 @@ static void on_zcl_activity(void) {
     if (poll_ctrl_instance == NULL)
         return;
 
+    if (poll_ctrl_instance->in_fast_poll)
+        return;
+
+    if (poll_ctrl_instance->settle_completed)
+        return;
+
     printf("ZCL activity, entering fast poll\r\n");
     enter_fast_poll(poll_ctrl_instance, poll_ctrl_instance->fast_poll_timeout);
 }
@@ -171,8 +177,8 @@ static hal_zigbee_cmd_result_t poll_control_cmd_callback(
                                 ((uint32_t)data[1] << 8) |
                                 ((uint32_t)data[2] << 16) |
                                 ((uint32_t)data[3] << 24);
-        printf("Poll control: set long poll interval=%lu\r\n",
-               (unsigned long)new_interval);
+        printf("Poll control: set long poll interval=%d\r\n",
+               (int)new_interval);
         if (new_interval < 0x04 || new_interval > 0x6E0000 ||
             (cluster->check_in_interval != 0 &&
              new_interval > cluster->check_in_interval) ||
@@ -231,8 +237,8 @@ void poll_control_cluster_callback_attr_write(uint16_t attribute_id) {
     zigbee_poll_control_cluster *cluster = poll_ctrl_instance;
 
     if (attribute_id == ZCL_ATTR_POLL_CTRL_CHECK_IN_INTERVAL) {
-        printf("Poll control: check-in interval written=%lu\r\n",
-               (unsigned long)cluster->check_in_interval);
+        printf("Poll control: check-in interval written=%d\r\n",
+               (int)cluster->check_in_interval);
         if (cluster->check_in_interval != 0 &&
             (cluster->check_in_interval < cluster->long_poll_interval)) {
             printf("Poll control: invalid check-in interval, reverting\r\n");
@@ -260,6 +266,7 @@ void poll_control_cluster_add_to_endpoint(zigbee_poll_control_cluster *cluster,
     poll_ctrl_instance        = cluster;
     cluster->endpoint         = endpoint->endpoint;
     cluster->in_fast_poll     = false;
+    cluster->settle_completed = false;
     cluster->cluster_revision = 1;
 
     // Set defaults based on device type
@@ -328,6 +335,7 @@ void poll_control_cluster_update(void) {
         (int32_t)(hal_millis() - cluster->fast_poll_end_ms) >= 0) {
         printf("Poll control: fast poll timeout, switching to long poll\r\n");
         exit_fast_poll(cluster);
+        cluster->settle_completed = true;
     }
 
     // Ensure poll rate is correct, just in case
