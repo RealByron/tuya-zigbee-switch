@@ -4,6 +4,7 @@
 #include "hal/tasks.h"
 #include "hal/timer.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 
 void led_init(led_t *led) {
@@ -44,16 +45,25 @@ static void led_blink_handler(void *arg) {
 
 void led_blink(led_t *led, uint16_t on_time_ms, uint16_t off_time_ms,
                uint16_t times) {
-    // Always set new durations
-    led->blink_time_on  = on_time_ms;
-    led->blink_time_off = off_time_ms;
-
     if (led->blink_times_left != 0) {
-        // If we already blinking, do not reschedule
-        // to unnecessary avoid jumps in blinking pace
+        // Already blinking — update parameters.
+        // Only reschedule when durations actually change so that
+        // repeated calls with the same timing (e.g. network indicator
+        // polling) don't cause visible jumps in blink pace.
+        bool durations_changed = (led->blink_time_on != on_time_ms ||
+                                  led->blink_time_off != off_time_ms);
+        led->blink_time_on    = on_time_ms;
+        led->blink_time_off   = off_time_ms;
         led->blink_times_left = times;
+        if (durations_changed) {
+            hal_tasks_schedule(&led->blink_task,
+                               led->on ? on_time_ms : off_time_ms);
+        }
         return;
     }
+
+    led->blink_time_on  = on_time_ms;
+    led->blink_time_off = off_time_ms;
 
     hal_gpio_write(led->pin, led->on_high);
     led->on = 1;
